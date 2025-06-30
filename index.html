@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Genscript IDE</title>
+  <title>Genscript IDE v3</title>
   <style>
     body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
     textarea, button { width: 100%; font-family: monospace; margin-top: 10px; }
@@ -10,12 +10,23 @@
 </head>
 <body>
   <h2>Genscript IDE</h2>
-  <textarea id="codeInput" rows="12" placeholder="Write your Genscript here..."></textarea>
+  <textarea id="codeInput" rows="14" placeholder="Write your Genscript here..."></textarea>
   <button onclick="runCode()">Run</button>
   <pre id="output"></pre>
 
   <script>
     const variables = {};
+
+    function evaluateMath(expr) {
+      try {
+        const parsed = expr.replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, match => 
+          variables[match] !== undefined ? variables[match] : 'undefined'
+        );
+        return eval(parsed);
+      } catch {
+        return 'Math Error';
+      }
+    }
 
     function runCode() {
       const codeLines = document.getElementById('codeInput').value.trim().split('\n');
@@ -23,37 +34,61 @@
       let i = 0;
 
       while (i < codeLines.length) {
-        const line = codeLines[i].trim();
+        let line = codeLines[i].trim();
 
-        if (line.startsWith('/equal')) {
+        // Nesting logic (e.g. /equal (a=/math 3+2))
+        const nestedMatch = line.match(/\((.*)=\/math (.*)\)/);
+        if (line.startsWith('/equal') && nestedMatch) {
+          const [_, key, mathExpr] = nestedMatch;
+          variables[key.trim()] = evaluateMath(mathExpr.trim());
+          i++;
+          continue;
+        }
+
+        // /create (name)
+        if (line.startsWith('/create')) {
+          const varName = line.match(/\((.*)\)/)[1].trim();
+          variables[varName] = undefined;
+        }
+
+        // /equal (a=5) or /equal (a=text)
+        else if (line.startsWith('/equal')) {
           const [key, val] = line.match(/\((.*)=(.*)\)/).slice(1);
-          variables[key.trim()] = isNaN(val) ? val.trim().replace(/"/g, '') : Number(val);
-        }
-
-        else if (line.startsWith('/print')) {
-          const arg = line.match(/\((.*)\)/)[1].trim();
-          output += (variables[arg] !== undefined ? variables[arg] : arg.replace(/"/g, '')) + '\n';
-        }
-
-        else if (line.startsWith('/math')) {
-          const expr = line.match(/\((.*)\)/)[1].trim();
-          const [key, calc] = expr.split('=');
-          try {
-            const parsedCalc = calc.replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, match =>
-              variables[match] !== undefined ? variables[match] : 'undefined'
-            );
-            variables[key.trim()] = eval(parsedCalc);
-          } catch {
-            output += 'Math error on line ' + (i + 1) + '\n';
+          const cleanVal = val.trim();
+          if (cleanVal.startsWith('/math')) {
+            const mathExpr = cleanVal.replace('/math', '').trim();
+            variables[key.trim()] = evaluateMath(mathExpr);
+          } else {
+            variables[key.trim()] = isNaN(cleanVal) ? cleanVal.replace(/"/g, '') : Number(cleanVal);
           }
         }
 
+        // /math (a=a+2)
+        else if (line.startsWith('/math')) {
+          // Not a standalone command anymore, handled by /equal
+        }
+
+        // /print (a /math +2) or /print (a)
+        else if (line.startsWith('/print')) {
+          const raw = line.match(/\((.*)\)/)[1].trim();
+          if (raw.includes('/math')) {
+            const parts = raw.split('/math');
+            const left = parts[0].trim();
+            const mathOp = parts[1].trim();
+            const leftVal = variables[left] !== undefined ? variables[left] : parseFloat(left);
+            const mathResult = evaluateMath(leftVal + mathOp);
+            output += mathResult + '\n';
+          } else {
+            output += (variables[raw] !== undefined ? variables[raw] : raw.replace(/"/g, '')) + '\n';
+          }
+        }
+
+        // /if (x==5)
         else if (line.startsWith('/if')) {
           const condition = line.match(/\((.*)\)/)[1].trim();
           const [left, right] = condition.split('==');
           const val1 = variables[left.trim()] ?? left.trim();
           const val2 = variables[right.trim()] ?? right.trim();
-
           if (val1 == val2) {
             i++;
             continue;
@@ -63,6 +98,7 @@
           }
         }
 
+        // /loop (3)
         else if (line.startsWith('/loop')) {
           const times = parseInt(line.match(/\((.*)\)/)[1]);
           const nextLine = codeLines[i + 1];
@@ -73,31 +109,34 @@
           continue;
         }
 
+        // /input (username)
         else if (line.startsWith('/input')) {
           const key = line.match(/\((.*)\)/)[1].trim();
           const userInput = prompt(`Enter value for ${key}:`);
           variables[key] = isNaN(userInput) ? userInput : Number(userInput);
         }
 
+        // /random (luck=1-100)
         else if (line.startsWith('/random')) {
-          const [key, range] = line.match(/\((.*)=(\d+)-(\d+)\)/).slice(1);
-          const min = parseInt(range), max = parseInt(arguments[2]);
-          const randomValue = Math.floor(Math.random() * (max - min + 1)) + min;
-          variables[key.trim()] = randomValue;
+          const match = line.match(/\((.*)=(\d+)-(\d+)\)/);
+          const key = match[1], min = parseInt(match[2]), max = parseInt(match[3]);
+          variables[key.trim()] = Math.floor(Math.random() * (max - min + 1)) + min;
         }
 
+        // /time
         else if (line.startsWith('/time')) {
           const now = new Date();
-          const timeStr = now.toLocaleTimeString();
-          output += timeStr + '\n';
+          output += now.toLocaleTimeString() + '\n';
         }
 
+        // /length (a)
         else if (line.startsWith('/length')) {
           const arg = line.match(/\((.*)\)/)[1].trim();
           const value = variables[arg] ?? arg;
           output += value.toString().length + '\n';
         }
 
+        // /string (upper username)
         else if (line.startsWith('/string')) {
           const [action, varname] = line.match(/\((.*) (.*)\)/).slice(1);
           const value = variables[varname] ?? '';
