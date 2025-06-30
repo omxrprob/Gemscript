@@ -1,24 +1,118 @@
-<textarea id="codeInput"></textarea>
-<button onclick="runCode()">Run</button>
-<pre id="output"></pre>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Genscript IDE</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
+    textarea, button { width: 100%; font-family: monospace; margin-top: 10px; }
+    pre { background: #222; padding: 10px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>Genscript IDE</h2>
+  <textarea id="codeInput" rows="12" placeholder="Write your Genscript here..."></textarea>
+  <button onclick="runCode()">Run</button>
+  <pre id="output"></pre>
 
-<script>
-  const variables = {};
+  <script>
+    const variables = {};
 
-  function runCode() {
-    const code = document.getElementById('codeInput').value.split('\n');
-    let output = '';
+    function runCode() {
+      const codeLines = document.getElementById('codeInput').value.trim().split('\n');
+      let output = '';
+      let i = 0;
 
-    code.forEach(line => {
-      if (line.startsWith('/equal')) {
-        const [key, val] = line.match(/\((.*)=(.*)\)/).slice(1);
-        variables[key.trim()] = isNaN(val) ? val.trim() : Number(val);
-      } else if (line.startsWith('/print')) {
-        const arg = line.match(/\((.*)\)/)[1].trim();
-        output += (variables[arg] !== undefined ? variables[arg] : arg) + '\n';
+      while (i < codeLines.length) {
+        const line = codeLines[i].trim();
+
+        if (line.startsWith('/equal')) {
+          const [key, val] = line.match(/\((.*)=(.*)\)/).slice(1);
+          variables[key.trim()] = isNaN(val) ? val.trim().replace(/"/g, '') : Number(val);
+        }
+
+        else if (line.startsWith('/print')) {
+          const arg = line.match(/\((.*)\)/)[1].trim();
+          output += (variables[arg] !== undefined ? variables[arg] : arg.replace(/"/g, '')) + '\n';
+        }
+
+        else if (line.startsWith('/math')) {
+          const expr = line.match(/\((.*)\)/)[1].trim();
+          const [key, calc] = expr.split('=');
+          try {
+            const parsedCalc = calc.replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, match =>
+              variables[match] !== undefined ? variables[match] : 'undefined'
+            );
+            variables[key.trim()] = eval(parsedCalc);
+          } catch {
+            output += 'Math error on line ' + (i + 1) + '\n';
+          }
+        }
+
+        else if (line.startsWith('/if')) {
+          const condition = line.match(/\((.*)\)/)[1].trim();
+          const [left, right] = condition.split('==');
+          const val1 = variables[left.trim()] ?? left.trim();
+          const val2 = variables[right.trim()] ?? right.trim();
+
+          if (val1 == val2) {
+            i++;
+            continue;
+          } else {
+            i += 2;
+            continue;
+          }
+        }
+
+        else if (line.startsWith('/loop')) {
+          const times = parseInt(line.match(/\((.*)\)/)[1]);
+          const nextLine = codeLines[i + 1];
+          for (let j = 0; j < times - 1; j++) {
+            codeLines.splice(i + 1, 0, nextLine);
+          }
+          i++;
+          continue;
+        }
+
+        else if (line.startsWith('/input')) {
+          const key = line.match(/\((.*)\)/)[1].trim();
+          const userInput = prompt(`Enter value for ${key}:`);
+          variables[key] = isNaN(userInput) ? userInput : Number(userInput);
+        }
+
+        else if (line.startsWith('/random')) {
+          const [key, range] = line.match(/\((.*)=(\d+)-(\d+)\)/).slice(1);
+          const min = parseInt(range), max = parseInt(arguments[2]);
+          const randomValue = Math.floor(Math.random() * (max - min + 1)) + min;
+          variables[key.trim()] = randomValue;
+        }
+
+        else if (line.startsWith('/time')) {
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString();
+          output += timeStr + '\n';
+        }
+
+        else if (line.startsWith('/length')) {
+          const arg = line.match(/\((.*)\)/)[1].trim();
+          const value = variables[arg] ?? arg;
+          output += value.toString().length + '\n';
+        }
+
+        else if (line.startsWith('/string')) {
+          const [action, varname] = line.match(/\((.*) (.*)\)/).slice(1);
+          const value = variables[varname] ?? '';
+          if (action === 'upper') {
+            variables[varname] = value.toString().toUpperCase();
+          } else if (action === 'lower') {
+            variables[varname] = value.toString().toLowerCase();
+          }
+        }
+
+        i++;
       }
-    });
 
-    document.getElementById('output').textContent = output;
-  }
-</script>
+      document.getElementById('output').textContent = output;
+    }
+  </script>
+</body>
+</html>
