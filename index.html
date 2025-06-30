@@ -1,0 +1,24 @@
+<textarea id="codeInput"></textarea>
+<button onclick="runCode()">Run</button>
+<pre id="output"></pre>
+
+<script>
+  const variables = {};
+
+  function runCode() {
+    const code = document.getElementById('codeInput').value.split('\n');
+    let output = '';
+
+    code.forEach(line => {
+      if (line.startsWith('/equal')) {
+        const [key, val] = line.match(/\((.*)=(.*)\)/).slice(1);
+        variables[key.trim()] = isNaN(val) ? val.trim() : Number(val);
+      } else if (line.startsWith('/print')) {
+        const arg = line.match(/\((.*)\)/)[1].trim();
+        output += (variables[arg] !== undefined ? variables[arg] : arg) + '\n';
+      }
+    });
+
+    document.getElementById('output').textContent = output;
+  }
+</script>
